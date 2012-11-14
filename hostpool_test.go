@@ -1,6 +1,7 @@
 package hostpool
 
 import (
+	"errors"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
@@ -8,7 +9,6 @@ import (
 	"os"
 	"testing"
 	"time"
-	"errors"
 )
 
 func TestHostPool(t *testing.T) {
@@ -65,7 +65,7 @@ func TestEpsilonGreedy(t *testing.T) {
 	rand.Seed(10)
 
 	iterations := 12000
-	p := NewEpsilonGreedy([]string{"a", "b"}, 0, &LinearEpsilonValueCalculator{})
+	p := NewEpsilonGreedy([]string{"a", "b"}, 0, &LinearEpsilonValueCalculator{}).(*epsilonGreedyHostPool)
 
 	timings := make(map[string]int64)
 	timings["a"] = 200

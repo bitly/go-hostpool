@@ -16,7 +16,6 @@ type timer interface {
 
 type realTimer struct{}
 
-
 // --- Response interfaces and structs ----
 
 type HostPoolResponse interface {
@@ -81,7 +80,6 @@ type hostEntry struct {
 	epsilonPercentage float64
 }
 
-
 // --- Value Calculators -----------------
 
 type EpsilonValueCalculator interface {
@@ -103,7 +101,7 @@ const minEpsilon = 0.01   // explore one percent of the time
 const initialEpsilon = 0.3
 const defaultDecayDuration = time.Duration(5) * time.Minute
 
-func New(hosts []string) *standardHostPool {
+func New(hosts []string) HostPool {
 	p := &standardHostPool{
 		hosts:             make(map[string]*hostEntry, len(hosts)),
 		hostList:          make([]*hostEntry, len(hosts)),
@@ -170,13 +168,14 @@ func (r *epsilonHostPoolResponse) Mark(err error) {
 // a good overview of Epsilon Greedy is here http://stevehanov.ca/blog/index.php?id=132
 //
 // decayDuration may be set to 0 to use the default value of 5 minutes
-func NewEpsilonGreedy(hosts []string, decayDuration time.Duration, calc EpsilonValueCalculator) *epsilonGreedyHostPool {
+func NewEpsilonGreedy(hosts []string, decayDuration time.Duration, calc EpsilonValueCalculator) HostPool {
 
 	if decayDuration <= 0 {
 		decayDuration = defaultDecayDuration
 	}
+	stdHP := New(hosts).(*standardHostPool)
 	p := &epsilonGreedyHostPool{
-		standardHostPool:       *New(hosts),
+		standardHostPool:       *stdHP,
 		epsilon:                float32(initialEpsilon),
 		decayDuration:          decayDuration,
 		EpsilonValueCalculator: calc,
@@ -196,13 +195,11 @@ func (rt *realTimer) between(start time.Time, end time.Time) time.Duration {
 	return end.Sub(start)
 }
 
-
 func (p *epsilonGreedyHostPool) SetEpsilon(newEpsilon float32) {
 	p.Lock()
 	defer p.Unlock()
 	p.epsilon = newEpsilon
 }
-
 
 func (p *epsilonGreedyHostPool) epsilonGreedyDecay() {
 	durationPerBucket := p.decayDuration / epsilonBuckets
@@ -222,7 +219,6 @@ func (p *epsilonGreedyHostPool) performEpsilonGreedyDecay() {
 	}
 	p.Unlock()
 }
-
 
 // return an upstream entry from the HostPool
 func (p *standardHostPool) Get() HostPoolResponse {
