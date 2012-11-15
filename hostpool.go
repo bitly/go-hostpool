@@ -46,6 +46,7 @@ type HostPool interface {
 
 	ResetAll()
 	Hosts() []string
+	sync.Locker
 }
 
 type standardHostPool struct {
@@ -58,26 +59,11 @@ type standardHostPool struct {
 }
 
 type epsilonGreedyHostPool struct {
-	standardHostPool               // TODO - would be nifty if we could embed HostPool and Locker interfaces
+	HostPool
 	epsilon                float32 // this is our exploration factor
 	decayDuration          time.Duration
 	EpsilonValueCalculator // embed the epsilonValueCalculator
 	timer
-}
-
-// --- hostEntry - this is due to get upgraded
-
-type hostEntry struct {
-	host              string
-	nextRetry         time.Time
-	retryCount        int16
-	retryDelay        time.Duration
-	dead              bool
-	epsilonCounts     []int64
-	epsilonValues     []int64
-	epsilonIndex      int
-	epsilonValue      float64
-	epsilonPercentage float64
 }
 
 // --- Value Calculators -----------------
@@ -110,10 +96,7 @@ func New(hosts []string) HostPool {
 	}
 
 	for i, h := range hosts {
-		e := &hostEntry{
-			host:       h,
-			retryDelay: p.initialRetryDelay,
-		}
+		e := newHostEntry(h, p.initialRetryDelay, p.maxRetryInterval)
 		p.hosts[h] = e
 		p.hostList[i] = e
 	}
@@ -173,9 +156,9 @@ func NewEpsilonGreedy(hosts []string, decayDuration time.Duration, calc EpsilonV
 	if decayDuration <= 0 {
 		decayDuration = defaultDecayDuration
 	}
-	stdHP := New(hosts).(*standardHostPool)
+	// stdHP := New(hosts).(*standardHostPool)
 	p := &epsilonGreedyHostPool{
-		standardHostPool:       *stdHP,
+		HostPool:               New(hosts),
 		epsilon:                float32(initialEpsilon),
 		decayDuration:          decayDuration,
 		EpsilonValueCalculator: calc,
@@ -247,14 +230,12 @@ func (p *standardHostPool) getRoundRobin() string {
 		currentIndex := (i + p.nextHostIndex) % hostCount
 
 		h := p.hostList[currentIndex]
-		if !h.dead {
+		if h.canTryHost(now) {
+			if h.IsDead() {
+				h.willRetryHost()
+			}
 			p.nextHostIndex = currentIndex + 1
-			return h.host
-		}
-		if h.nextRetry.Before(now) {
-			h.willRetryHost(p.maxRetryInterval)
-			p.nextHostIndex = currentIndex + 1
-			return h.host
+			return h.Host()
 		}
 	}
 
@@ -376,7 +357,7 @@ func (p *standardHostPool) ResetAll() {
 // already been acquired
 func (p *standardHostPool) doResetAll() {
 	for _, h := range p.hosts {
-		h.dead = false
+		h.SetDead(false)
 	}
 }
 
@@ -389,12 +370,12 @@ func (p *standardHostPool) markSuccess(hostR HostPoolResponse) {
 	if !ok {
 		log.Fatalf("host %s not in HostPool %v", host, p.Hosts())
 	}
-	h.dead = false
+	h.SetDead(false)
 }
 
 func (p *epsilonGreedyHostPool) markSuccess(hostR HostPoolResponse) {
 	// first do the base markSuccess - a little redundant with host lookup but cleaner than repeating logic
-	p.standardHostPool.markSuccess(hostR)
+	p.HostPool.markSuccess(hostR)
 	eHostR, ok := hostR.(*epsilonHostPoolResponse)
 	if !ok {
 		log.Printf("Incorrect type in eps markSuccess!") // TODO reflection to print out offending type
@@ -421,14 +402,9 @@ func (p *standardHostPool) markFailed(hostR HostPoolResponse) {
 	if !ok {
 		log.Fatalf("host %s not in HostPool %v", host, p.Hosts())
 	}
-	if !h.dead {
-		h.dead = true
-		h.retryCount = 0
-		h.retryDelay = p.initialRetryDelay
-		h.nextRetry = time.Now().Add(h.retryDelay)
-	}
-
+	h.SetDead(true)
 }
+
 func (p *standardHostPool) Hosts() []string {
 	hosts := make([]string, len(p.hosts))
 	for host, _ := range p.hosts {
