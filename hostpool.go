@@ -223,6 +223,12 @@ func (p *epsilonGreedyHostPool) Get() HostPoolResponse {
 }
 
 func (p *standardHostPool) getRoundRobin() string {
+	// TODO - will want to replace this with something that runs in a 
+	// goroutine and receives requests on a channel.
+	// The state being protected in that case is really just the currentIdx
+
+	// Question - should I just skip the goroutine shit and select randomly?
+	// Maybe
 	now := time.Now()
 	hostCount := len(p.hostList)
 	for i := range p.hostList {
