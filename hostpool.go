@@ -46,13 +46,14 @@ type HostPool interface {
 
 	ResetAll()
 	Hosts() []string
+	lookupHost(string) HostEntry
 	sync.Locker
 }
 
 type standardHostPool struct {
 	sync.RWMutex
-	hosts             map[string]*hostEntry
-	hostList          []*hostEntry
+	hosts             map[string]HostEntry
+	hostList          []HostEntry
 	initialRetryDelay time.Duration
 	maxRetryInterval  time.Duration
 	nextHostIndex     int
@@ -89,8 +90,8 @@ const defaultDecayDuration = time.Duration(5) * time.Minute
 
 func New(hosts []string) HostPool {
 	p := &standardHostPool{
-		hosts:             make(map[string]*hostEntry, len(hosts)),
-		hostList:          make([]*hostEntry, len(hosts)),
+		hosts:             make(map[string]HostEntry, len(hosts)),
+		hostList:          make([]HostEntry, len(hosts)),
 		initialRetryDelay: time.Duration(30) * time.Second,
 		maxRetryInterval:  time.Duration(900) * time.Second,
 	}
@@ -248,7 +249,7 @@ func (p *standardHostPool) getRoundRobin() string {
 	// all hosts are down. re-add them
 	p.doResetAll()
 	p.nextHostIndex = 0
-	return p.hostList[0].host
+	return p.hostList[0].Host()
 }
 
 func (p *epsilonGreedyHostPool) getEpsilonGreedy() string {
@@ -260,7 +261,7 @@ func (p *epsilonGreedyHostPool) getEpsilonGreedy() string {
 		if p.epsilon < minEpsilon {
 			p.epsilon = minEpsilon
 		}
-		return p.getRoundRobin()
+		return p.HostPool.Get().Host()
 	}
 
 	// calculate values for each host in the 0..1 range (but not ormalized)
@@ -301,34 +302,13 @@ func (p *epsilonGreedyHostPool) getEpsilonGreedy() string {
 		if len(possibleHosts) != 0 {
 			log.Println("Failed to randomly choose a host, Dan loses")
 		}
-		return p.getRoundRobin()
+		return p.HostPool.Get().Host()
 	}
 
 	if hostToUse.dead {
-		hostToUse.willRetryHost(p.maxRetryInterval)
+		hostToUse.willRetryHost()
 	}
 	return hostToUse.host
-}
-
-func (h *hostEntry) canTryHost(now time.Time) bool {
-	if !h.dead {
-		return true
-	}
-	if h.nextRetry.Before(now) {
-		return true
-	}
-	return false
-}
-
-func (h *hostEntry) willRetryHost(maxRetryInterval time.Duration) {
-	h.retryCount += 1
-	newDelay := h.retryDelay * 2
-	if newDelay < maxRetryInterval {
-		h.retryDelay = newDelay
-	} else {
-		h.retryDelay = maxRetryInterval
-	}
-	h.nextRetry = time.Now().Add(h.retryDelay)
 }
 
 func (h *hostEntry) getWeightedAverageResponseTime() float64 {
@@ -392,10 +372,7 @@ func (p *epsilonGreedyHostPool) markSuccess(hostR HostPoolResponse) {
 
 	p.Lock()
 	defer p.Unlock()
-	h, ok := p.hosts[host]
-	if !ok {
-		log.Fatalf("host %s not in HostPool %v", host, p.Hosts())
-	}
+	h := p.lookupHost(host)
 	h.epsilonCounts[h.epsilonIndex]++
 	h.epsilonValues[h.epsilonIndex] += int64(duration.Seconds() * 1000)
 }
@@ -417,6 +394,15 @@ func (p *standardHostPool) Hosts() []string {
 		hosts = append(hosts, host)
 	}
 	return hosts
+}
+
+func (p *standardHostPool) lookupHost(hostname string) HostEntry {
+	// We can do a "simple" lookup here because this map doesn't change once init'd
+	h, ok := p.hosts[host]
+	if !ok {
+		log.Fatalf("host %s not in HostPool %v", host, p.Hosts())
+	}
+	return h
 }
 
 // -------- Epsilon Value Calculators ----------
