@@ -42,7 +42,7 @@ type getWAScoreRequest struct {
 
 // -- "Constructor" --
 
-func New() EpsilonDecayStore {
+func NewDecayStore() EpsilonDecayStore {
 	store := &defEpsDecayStore{
 		epsilonCounts: make([]int64, epsilonBuckets),
 		epsilonValues: make([]float64, epsilonBuckets),

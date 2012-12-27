@@ -48,11 +48,7 @@ type hostEntry struct {
 	initialRetryDelay time.Duration
 	maxRetryInterval  time.Duration
 	dead              bool
-	// epsilonCounts     []int64
-	// epsilonValues     []int64
-	// epsilonIndex      int
-	// epsilonValue      float64
-	// epsilonPercentage float64
+
 	incomingRequests chan hostEntryRequest
 }
 
