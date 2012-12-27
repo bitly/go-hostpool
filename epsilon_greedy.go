@@ -72,8 +72,10 @@ func ToEpsilonGreedy(pool HostPool, decayDuration time.Duration, calc EpsilonVal
 		EpsilonValueCalculator: calc,
 		timer:                  &realTimer{},
 	}
-	for _, hostName := range p.Hosts() {
-		p.hosts[hostName] = toEGHostEntry(p.lookupHost(hostName))
+
+	p.hosts = make(map[string]epsilonGreedyHostEntry)
+	for _, hostName := range pool.Hosts() {
+		p.hosts[hostName] = toEGHostEntry(pool.lookupHost(hostName))
 	}
 	return p
 }
@@ -97,12 +99,12 @@ func (p *epsilonGreedyHostPool) getEpsilonGreedy() string {
 		epsilonValue      float64
 		epsilonPercentage float64
 	}
-	var hostToUse epsilonChoice
-	var possibleHosts []epsilonChoice
+	var hostToUse *epsilonChoice
+	var possibleHosts []*epsilonChoice
 	now := time.Now()
 	var sumValues float64
 	for _, h := range p.hosts {
-		ec := epsilonChoice{he: h}
+		ec := &epsilonChoice{he: h}
 		if h.canTryHost(now) {
 			v := h.GetWeightedAvgScore() // score is the response time
 			if v > 0 {
@@ -119,7 +121,6 @@ func (p *epsilonGreedyHostPool) getEpsilonGreedy() string {
 		for _, ec := range possibleHosts {
 			ec.epsilonPercentage = ec.epsilonValue / sumValues
 		}
-
 		// do a weighted random choice among hosts
 		ceiling := 0.0
 		pickPercentage := rand.Float64()
@@ -132,7 +133,7 @@ func (p *epsilonGreedyHostPool) getEpsilonGreedy() string {
 		}
 	}
 
-	if hostToUse.he == nil {
+	if hostToUse == nil {
 		if len(possibleHosts) != 0 {
 			log.Println("Failed to randomly choose a host, Dan loses")
 		}
@@ -156,8 +157,6 @@ func (p *epsilonGreedyHostPool) markSuccess(hostR HostPoolResponse) {
 	host := eHostR.host
 	duration := p.between(eHostR.started, eHostR.ended)
 
-	p.Lock()
-	defer p.Unlock()
 	h := p.hosts[host]
 	h.Record(duration.Seconds())
 }

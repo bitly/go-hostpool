@@ -77,7 +77,6 @@ func New(hosts []string) HostPool {
 		e := newHostEntry(h, p.initialRetryDelay, p.maxRetryInterval)
 		p.hosts[h] = e
 	}
-
 	return p
 }
 
@@ -130,8 +129,6 @@ func (p *standardHostPool) Get() HostPoolResponse {
 }
 
 func (p *epsilonGreedyHostPool) Get() HostPoolResponse {
-	p.Lock()
-	defer p.Unlock()
 	host := p.getEpsilonGreedy()
 	started := time.Now()
 	return &epsilonHostPoolResponse{
@@ -208,7 +205,7 @@ func (p *standardHostPool) markFailed(hostR HostPoolResponse) {
 }
 
 func (p *standardHostPool) Hosts() []string {
-	hosts := make([]string, len(p.hosts))
+	hosts := make([]string, 0, len(p.hosts))
 	for host, _ := range p.hosts {
 		hosts = append(hosts, host)
 	}

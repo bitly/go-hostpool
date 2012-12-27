@@ -17,6 +17,7 @@ const defaultDecayDuration = time.Duration(5) * time.Minute
 type EpsilonDecayStore interface {
 	Record(score float64)
 	GetWeightedAvgScore() float64
+	performDecay() // this is only exposed in the interface for testing
 }
 
 type defEpsDecayStore struct {
@@ -86,7 +87,7 @@ func (ds *defEpsDecayStore) muxRequests(decayTicker <-chan time.Time) {
 		case <-decayTicker:
 			ds.performDecay()
 		case req := <-ds.getWAScoreReqChan:
-			avgScore := ds.GetWeightedAvgScore()
+			avgScore := ds.getWeightedAverageScore()
 			req.respChan <- avgScore
 		case req := <-ds.recordReqChan:
 			newScore := req.score

@@ -79,7 +79,9 @@ func TestEpsilonGreedy(t *testing.T) {
 
 	for i := 0; i < iterations; i += 1 {
 		if i != 0 && i%100 == 0 {
-			p.performEpsilonGreedyDecay()
+			for _, h := range p.hosts {
+				h.performDecay()
+			}
 		}
 		hostR := p.Get()
 		host := hostR.Host()
@@ -103,7 +105,9 @@ func TestEpsilonGreedy(t *testing.T) {
 
 	for i := 0; i < iterations; i += 1 {
 		if i != 0 && i%100 == 0 {
-			p.performEpsilonGreedyDecay()
+			for _, h := range p.hosts {
+				h.performDecay()
+			}
 		}
 		hostR := p.Get()
 		host := hostR.Host()
