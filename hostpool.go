@@ -44,7 +44,6 @@ type HostPool interface {
 }
 
 type standardHostPool struct {
-	sync.RWMutex
 	hosts             map[string]HostEntry
 	initialRetryDelay time.Duration
 	maxRetryInterval  time.Duration
@@ -116,8 +115,6 @@ func (rt *realTimer) between(start time.Time, end time.Time) time.Duration {
 
 // return an upstream entry from the HostPool
 func (p *standardHostPool) Get() HostPoolResponse {
-	p.Lock()
-	defer p.Unlock()
 	host := p.getRoundRobin()
 	return &standardHostPoolResponse{host: host, pool: p}
 }
