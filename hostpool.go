@@ -48,7 +48,7 @@ type standardHostPool struct {
 	hosts             map[string]HostEntry
 	initialRetryDelay time.Duration
 	maxRetryInterval  time.Duration
-	nextHostIndex     int
+	rrResults         chan string
 }
 
 // --- Value Calculators -----------------
@@ -75,6 +75,8 @@ func New(hosts []string) HostPool {
 		e := newHostEntry(h, p.initialRetryDelay, p.maxRetryInterval)
 		p.hosts[h] = e
 	}
+	p.rrResults = make(chan string)
+	go p.serveRoundRobin()
 	return p
 }
 
@@ -130,32 +132,34 @@ func (p *epsilonGreedyHostPool) Get() HostPoolResponse {
 }
 
 func (p *standardHostPool) getRoundRobin() string {
-	// TODO - will want to replace this with something that runs in a 
-	// goroutine and receives requests on a channel.
-	// The state being protected in that case is really just the currentIdx
+	return <-p.rrResults
+}
 
-	// Question - should I just skip the goroutine shit and select randomly?
-	// Maybe
-	now := time.Now()
-	hostCount := len(p.hosts)
-	for i := range p.hostList() {
-		// iterate via sequenece from where we last iterated
-		currentIndex := (i + p.nextHostIndex) % hostCount
+func (p *standardHostPool) serveRoundRobin() {
+	nextHostIndex := 0
+	getHostToServe := func() string {
+		hostCount := len(p.hosts)
+		for i := range p.hostList() {
+			// iterate via sequenece from where we last iterated
+			currentIndex := (i + nextHostIndex) % hostCount
 
-		h := p.hostList()[currentIndex]
-		if h.canTryHost(now) {
-			if h.IsDead() {
-				h.willRetryHost()
+			h := p.hostList()[currentIndex]
+			if h.canTryHost(time.Now()) {
+				if h.IsDead() {
+					h.willRetryHost()
+				}
+				nextHostIndex = currentIndex + 1
+				return h.Host()
 			}
-			p.nextHostIndex = currentIndex + 1
-			return h.Host()
 		}
+		// all hosts are down. re-add them
+		p.ResetAll()
+		nextHostIndex = 0
+		return p.hostList()[0].Host()
 	}
-
-	// all hosts are down. re-add them
-	p.ResetAll()
-	p.nextHostIndex = 0
-	return p.hostList()[0].Host()
+	for {
+		p.rrResults <- getHostToServe()
+	}
 }
 
 func (p *standardHostPool) ResetAll() {
@@ -205,7 +209,6 @@ func (p *standardHostPool) lookupHost(hostname string) HostEntry {
 func (p *standardHostPool) hostList() []HostEntry {
 	// This returns a sorted list of HostEntry's. We ought
 	// to do some optimization so that this isn't computed every time
-	// TODO can totally use Hosts above to accomplish this
 	keys := make([]string, 0, len(p.hosts))
 	vals := make([]HostEntry, 0, len(p.hosts))
 	for hostName := range p.hosts {
