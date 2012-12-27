@@ -41,8 +41,6 @@ type HostPool interface {
 	ResetAll()
 	Hosts() []string
 	lookupHost(string) HostEntry
-	// setHostMap(map[string]HostEntry)
-	sync.Locker
 }
 
 type standardHostPool struct {
@@ -114,12 +112,6 @@ func (rt *realTimer) between(start time.Time, end time.Time) time.Duration {
 	return end.Sub(start)
 }
 
-func (p *epsilonGreedyHostPool) SetEpsilon(newEpsilon float32) {
-	p.Lock()
-	defer p.Unlock()
-	p.epsilon = newEpsilon
-}
-
 // return an upstream entry from the HostPool
 func (p *standardHostPool) Get() HostPoolResponse {
 	p.Lock()
@@ -161,21 +153,13 @@ func (p *standardHostPool) getRoundRobin() string {
 	}
 
 	// all hosts are down. re-add them
-	p.doResetAll()
+	p.ResetAll()
 	p.nextHostIndex = 0
 	return p.hostList()[0].Host()
 }
 
 func (p *standardHostPool) ResetAll() {
-	p.Lock()
-	defer p.Unlock()
-	p.doResetAll()
-}
-
-// this actually performs the logic to reset,
-// and should only be called when the lock has
-// already been acquired
-func (p *standardHostPool) doResetAll() {
+	// SetDead is threadsafe
 	for _, h := range p.hosts {
 		h.SetDead(false)
 	}
@@ -183,8 +167,6 @@ func (p *standardHostPool) doResetAll() {
 
 func (p *standardHostPool) markSuccess(hostR HostPoolResponse) {
 	host := hostR.Host()
-	p.Lock()
-	defer p.Unlock()
 
 	h, ok := p.hosts[host]
 	if !ok {
@@ -195,8 +177,7 @@ func (p *standardHostPool) markSuccess(hostR HostPoolResponse) {
 
 func (p *standardHostPool) markFailed(hostR HostPoolResponse) {
 	host := hostR.Host()
-	p.Lock()
-	defer p.Unlock()
+
 	h, ok := p.hosts[host]
 	if !ok {
 		log.Fatalf("host %s not in HostPool %v", host, p.Hosts())

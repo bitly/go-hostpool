@@ -1,6 +1,7 @@
 package hostpool
 
 import (
+	"log"
 	"math"
 	"time"
 )
@@ -103,7 +104,7 @@ func (he *hostEntry) IsDead() bool {
 	resp := <-req.respChan
 	isDeadResp, ok := resp.(bool)
 	if !ok {
-		// TODO
+		log.Fatal("Got incorrect response type from host_entry muxer in IsDead")
 	}
 	return isDeadResp
 }
@@ -130,7 +131,7 @@ func (he *hostEntry) canTryHost(now time.Time) bool {
 	resp := <-req.respChan
 	canTryResp, ok := resp.(bool)
 	if !ok {
-		// TODO
+		log.Fatal("Got incorrect response type from host_entry muxer in canTryHost")
 	}
 	return canTryResp
 }

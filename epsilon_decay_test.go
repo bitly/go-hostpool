@@ -2,7 +2,6 @@ package hostpool
 
 import (
 	"github.com/bmizerany/assert"
-	"log"
 	"testing"
 )
 
