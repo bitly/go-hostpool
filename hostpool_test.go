@@ -38,6 +38,7 @@ func TestHostPool(t *testing.T) {
 	// now restore a
 	respA = &standardHostPoolResponse{host: "a", pool: p}
 	respA.Mark(nil)
+	p.Get() // takes another go-round for it to update itself, will just choose c again for now
 	assert.Equal(t, p.Get().Host(), "a")
 	assert.Equal(t, p.Get().Host(), "c")
 
