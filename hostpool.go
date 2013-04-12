@@ -41,6 +41,7 @@ type HostPool interface {
 	ResetAll()
 	Hosts() []string
 	lookupHost(string) HostEntry
+	Close()
 }
 
 type standardHostPool struct {
@@ -48,6 +49,8 @@ type standardHostPool struct {
 	initialRetryDelay time.Duration
 	maxRetryInterval  time.Duration
 	rrResults         chan string
+	closeChan         chan struct{}
+	wg                sync.WaitGroup
 }
 
 // --- Value Calculators -----------------
@@ -68,13 +71,15 @@ func New(hosts []string) HostPool {
 		hosts:             make(map[string]HostEntry, len(hosts)),
 		initialRetryDelay: time.Duration(30) * time.Second,
 		maxRetryInterval:  time.Duration(900) * time.Second,
+		rrResults:         make(chan string),
+		closeChan:         make(chan struct{}),
 	}
 
 	for _, h := range hosts {
 		e := newHostEntry(h, p.initialRetryDelay, p.maxRetryInterval)
 		p.hosts[h] = e
 	}
-	p.rrResults = make(chan string)
+	p.wg.Add(1)
 	go p.serveRoundRobin()
 	return p
 }
@@ -155,7 +160,12 @@ func (p *standardHostPool) serveRoundRobin() {
 		return p.hostList()[0].Host()
 	}
 	for {
-		p.rrResults <- getHostToServe()
+		select {
+		case p.rrResults <- getHostToServe():
+		case <-p.closeChan:
+			p.wg.Done()
+			return
+		}
 	}
 }
 
@@ -216,6 +226,11 @@ func (p *standardHostPool) hostList() []HostEntry {
 		vals = append(vals, p.hosts[k])
 	}
 	return vals
+}
+
+func (p *standardHostPool) Close() {
+	p.closeChan <- struct{}{}
+	p.wg.Wait()
 }
 
 // -------- Epsilon Value Calculators ----------
