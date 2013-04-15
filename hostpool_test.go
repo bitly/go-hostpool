@@ -118,5 +118,28 @@ func TestEpsilonGreedy(t *testing.T) {
 	}
 
 	assert.Equal(t, hitCounts["b"] > hitCounts["a"], true)
+}
 
+func BenchmarkEpsilonGreedy(b *testing.B) {
+	b.StopTimer()
+
+	// Make up some response times
+	zipfDist := rand.NewZipf(rand.New(rand.NewSource(0)), 1.1, 5, 5000)
+	timings := make([]uint64, b.N)
+	for i := 0; i < b.N; i++ {
+		timings[i] = zipfDist.Uint64()
+	}
+
+	// Make the hostpool with a few hosts
+	p := NewEpsilonGreedy([]string{"a", "b"}, 0, &LinearEpsilonValueCalculator{}).(*epsilonGreedyHostPool)
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		if i != 0 && i%100 == 0 {
+			p.performEpsilonGreedyDecay()
+		}
+		hostR := p.Get()
+		p.timer = &mockTimer{t: int(timings[i])}
+		hostR.Mark(nil)
+	}
 }
