@@ -1,6 +1,7 @@
 package hostpool
 
 import (
+	"sync"
 	"time"
 )
 
@@ -14,13 +15,7 @@ import (
 const epsilonBuckets = 120
 const defaultDecayDuration = time.Duration(5) * time.Minute
 
-type EpsilonDecayStore interface {
-	Record(score float64)
-	GetWeightedAvgScore() float64
-	performDecay() // this is only exposed in the interface for testing
-}
-
-type defEpsDecayStore struct {
+type epsilonDecayStore struct {
 	epsilonCounts []int64
 	epsilonValues []float64
 	epsilonIndex  int
@@ -30,6 +25,9 @@ type defEpsDecayStore struct {
 	// incoming request channels
 	recordReqChan     chan *recordRequest
 	getWAScoreReqChan chan *getWAScoreRequest
+
+	closeChan chan struct{}
+	wg        sync.WaitGroup
 }
 
 type recordRequest struct {
@@ -43,8 +41,8 @@ type getWAScoreRequest struct {
 
 // -- "Constructor" --
 
-func NewDecayStore() EpsilonDecayStore {
-	store := &defEpsDecayStore{
+func newDecayStore() *epsilonDecayStore {
+	store := &epsilonDecayStore{
 		epsilonCounts: make([]int64, epsilonBuckets),
 		epsilonValues: make([]float64, epsilonBuckets),
 		decayDuration: defaultDecayDuration,
@@ -55,13 +53,14 @@ func NewDecayStore() EpsilonDecayStore {
 	var numBuckets int64 = int64(len(store.epsilonCounts))
 	durationPerBucket := time.Duration(int64(store.decayDuration) / numBuckets)
 	ticker := time.Tick(durationPerBucket)
+	store.wg.Add(1)
 	go store.muxRequests(ticker)
 	return store
 }
 
 // -- Public Methods --
 
-func (ds *defEpsDecayStore) Record(score float64) {
+func (ds *epsilonDecayStore) Record(score float64) {
 	req := &recordRequest{
 		score:    score,
 		respChan: make(chan struct{}),
@@ -70,7 +69,7 @@ func (ds *defEpsDecayStore) Record(score float64) {
 	<-req.respChan
 }
 
-func (ds *defEpsDecayStore) GetWeightedAvgScore() float64 {
+func (ds *epsilonDecayStore) GetWeightedAvgScore() float64 {
 	req := &getWAScoreRequest{
 		respChan: make(chan float64),
 	}
@@ -79,9 +78,14 @@ func (ds *defEpsDecayStore) GetWeightedAvgScore() float64 {
 	return avgScore
 }
 
+func (ds *epsilonDecayStore) close() {
+	ds.closeChan <- struct{}{}
+	ds.wg.Wait()
+}
+
 // -- Internal Methods --
 
-func (ds *defEpsDecayStore) muxRequests(decayTicker <-chan time.Time) {
+func (ds *epsilonDecayStore) muxRequests(decayTicker <-chan time.Time) {
 	for {
 		select {
 		case <-decayTicker:
@@ -94,6 +98,9 @@ func (ds *defEpsDecayStore) muxRequests(decayTicker <-chan time.Time) {
 			ds.epsilonCounts[ds.epsilonIndex]++
 			ds.epsilonValues[ds.epsilonIndex] += newScore
 			req.respChan <- struct{}{}
+		case <-ds.closeChan:
+			ds.wg.Done()
+			return
 		}
 
 	}
@@ -101,14 +108,14 @@ func (ds *defEpsDecayStore) muxRequests(decayTicker <-chan time.Time) {
 
 // Methods below should only be called from muxRequests above
 
-func (ds *defEpsDecayStore) performDecay() {
+func (ds *epsilonDecayStore) performDecay() {
 	ds.epsilonIndex += 1
 	ds.epsilonIndex = ds.epsilonIndex % epsilonBuckets
 	ds.epsilonCounts[ds.epsilonIndex] = 0
 	ds.epsilonValues[ds.epsilonIndex] = 0.0
 }
 
-func (ds *defEpsDecayStore) getWeightedAverageScore() float64 {
+func (ds *epsilonDecayStore) getWeightedAverageScore() float64 {
 	var value float64
 	var lastValue float64
 

@@ -230,6 +230,9 @@ func (p *standardHostPool) hostList() []HostEntry {
 
 func (p *standardHostPool) Close() {
 	p.closeChan <- struct{}{}
+	for _, he := range p.hosts {
+		he.Close()
+	}
 	p.wg.Wait()
 }
 

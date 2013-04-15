@@ -12,6 +12,7 @@ type HostEntry interface {
 	SetDead(bool)
 	canTryHost(time.Time) bool
 	willRetryHost()
+	Close()
 }
 
 // -- Requests
@@ -144,4 +145,8 @@ func (he *hostEntry) willRetryHost() {
 	}
 	he.incomingRequests <- req
 	<-req.respChan
+}
+
+func (he *hostEntry) Close() {
+	close(he.incomingRequests)
 }

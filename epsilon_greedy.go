@@ -6,16 +6,23 @@ import (
 	"time"
 )
 
-type epsilonGreedyHostEntry interface {
+type epsilonGreedyHostEntry struct {
 	HostEntry
-	EpsilonDecayStore
+	*epsilonDecayStore
 }
+
+func (egHostEntry *epsilonGreedyHostEntry) Close() {
+	egHostEntry.HostEntry.Close()
+	egHostEntry.epsilonDecayStore.close()
+}
+
+// -------------------------------
 
 type epsilonGreedyHostPool struct {
 	HostPool
-	hosts                  map[string]epsilonGreedyHostEntry // this basically just mirrors the underlying host map
-	epsilon                float32                           // this is our exploration factor
-	EpsilonValueCalculator                                   // embed the epsilonValueCalculator
+	hosts                  map[string]*epsilonGreedyHostEntry // this basically just mirrors the underlying host map
+	epsilon                float32                            // this is our exploration factor
+	EpsilonValueCalculator                                    // embed the epsilonValueCalculator
 	timer
 }
 
@@ -31,13 +38,10 @@ const epsilonDecay = 0.90 // decay the exploration rate
 const minEpsilon = 0.01   // explore one percent of the time
 const initialEpsilon = 0.3
 
-func toEGHostEntry(fromHE HostEntry) epsilonGreedyHostEntry {
-	return &struct {
-		HostEntry
-		EpsilonDecayStore
-	}{
+func toEGHostEntry(fromHE HostEntry) *epsilonGreedyHostEntry {
+	return &epsilonGreedyHostEntry{
 		fromHE,
-		NewDecayStore(),
+		newDecayStore(),
 	}
 }
 
@@ -73,7 +77,7 @@ func ToEpsilonGreedy(pool HostPool, decayDuration time.Duration, calc EpsilonVal
 		timer:                  &realTimer{},
 	}
 
-	p.hosts = make(map[string]epsilonGreedyHostEntry)
+	p.hosts = make(map[string]*epsilonGreedyHostEntry)
 	for _, hostName := range pool.Hosts() {
 		p.hosts[hostName] = toEGHostEntry(pool.lookupHost(hostName))
 	}
