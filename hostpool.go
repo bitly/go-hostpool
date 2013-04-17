@@ -8,6 +8,10 @@ import (
 
 // --- Response interfaces and structs ----
 
+// This interface represents the response from HostPool. You can retrieve the
+// hostname by calling Host(), and after making a request to the host you should
+// call Mark with any error encountered, which will inform the HostPool issuing
+// the HostPoolResponse of what happened to the request and allow it to update.
 type HostPoolResponse interface {
 	Host() string
 	Mark(error)
@@ -22,6 +26,9 @@ type standardHostPoolResponse struct {
 
 // --- HostPool structs and interfaces ----
 
+// This is the main HostPool interface. Structs implementing this interface
+// allow you to Get a HostPoolResponse (which includes a hostname to use),
+// get the list of all Hosts, and use ResetAll to reset state.
 type HostPool interface {
 	Get() HostPoolResponse
 	// keep the marks separate so we can override independently
@@ -49,6 +56,7 @@ const minEpsilon = 0.01   // explore one percent of the time
 const initialEpsilon = 0.3
 const defaultDecayDuration = time.Duration(5) * time.Minute
 
+// Construct a basic HostPool using the hostnames provided
 func New(hosts []string) HostPool {
 	p := &standardHostPool{
 		hosts:             make(map[string]*hostEntry, len(hosts)),
@@ -91,7 +99,7 @@ func doMark(err error, r HostPoolResponse) {
 	}
 }
 
-// return an upstream entry from the HostPool
+// return an entry from the HostPool
 func (p *standardHostPool) Get() HostPoolResponse {
 	p.Lock()
 	defer p.Unlock()

@@ -28,23 +28,20 @@ type epsilonGreedyHostPool struct {
 	timer
 }
 
-// Epsilon Greedy is an algorithim that allows HostPool not only to track failure state, 
-// but also to learn about "better" options in terms of speed, and to pick from available hosts
-// based on a percentage of how well they perform. This gives a weighted request rate to better
-// performing hosts, while still distributing requests to all hosts (proportionate to their performance)
-// 
-// After enabling Epsilon Greedy, hosts must be marked for sucess along with a time value representing 
-// how fast (or slow) that host was. 
-// 
-// host := pool.Get()
-// start := time.Now()
-// ..... do work with host
-// duration = time.Now().Sub(start)
-// pool.MarkSuccessWithTime(host, duration)
-// 
-// a good overview of Epsilon Greedy is here http://stevehanov.ca/blog/index.php?id=132
+// Construct an Epsilon Greedy HostPool
 //
-// decayDuration may be set to 0 to use the default value of 5 minutes
+// Epsilon Greedy is an algorithm that allows HostPool not only to track failure state, 
+// but also to learn about "better" options in terms of speed, and to pick from available hosts
+// based on how well they perform. This gives a weighted request rate to better
+// performing hosts, while still distributing requests to all hosts (proportionate to their performance).
+// The interface is the same as the standard HostPool, but be sure to mark the HostResponse immediately
+// after executing the request to the host, as that will stop the implicitly running request timer.
+// 
+// A good overview of Epsilon Greedy is here http://stevehanov.ca/blog/index.php?id=132
+//
+// To compute the weighting scores, we perform a weighted average of recent response times, over the course of
+// `decayDuration`. decayDuration may be set to 0 to use the default value of 5 minutes
+// We then use the supplied EpsilonValueCalculator to calculate a score from that weighted average response time.
 func NewEpsilonGreedy(hosts []string, decayDuration time.Duration, calc EpsilonValueCalculator) HostPool {
 
 	if decayDuration <= 0 {
