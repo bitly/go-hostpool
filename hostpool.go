@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+// Returns current version
+func Version() string {
+	return "0.1"
+}
+
 // --- Response interfaces and structs ----
 
 // This interface represents the response from HostPool. You can retrieve the
