@@ -1,3 +1,6 @@
+// A Go package to intelligently and flexibly pool among multiple hosts from your Go application.
+// Host selection can operate in round robin or epsilon greedy mode, and unresponsive hosts are
+// avoided. A good overview of Epsilon Greedy is here http://stevehanov.ca/blog/index.php?id=132
 package hostpool
 
 import (
