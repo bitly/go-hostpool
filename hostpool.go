@@ -28,7 +28,6 @@ type HostPoolResponse interface {
 
 type standardHostPoolResponse struct {
 	host string
-	sync.Once
 	pool HostPool
 }
 
@@ -94,12 +93,6 @@ func (r *standardHostPoolResponse) hostPool() HostPool {
 }
 
 func (r *standardHostPoolResponse) Mark(err error) {
-	r.Do(func() {
-		doMark(err, r)
-	})
-}
-
-func doMark(err error, r HostPoolResponse) {
 	if err == nil {
 		r.hostPool().markSuccess(r)
 	} else {

@@ -13,10 +13,8 @@ type epsilonHostPoolResponse struct {
 }
 
 func (r *epsilonHostPoolResponse) Mark(err error) {
-	r.Do(func() {
-		r.ended = time.Now()
-		doMark(err, r)
-	})
+	r.ended = time.Now()
+	r.standardHostPoolResponse.Mark(err)
 
 }
 

@@ -32,8 +32,6 @@ func TestHostPool(t *testing.T) {
 	respC.Mark(nil)
 	// get again, and verify that it's still c
 	assert.Equal(t, p.Get().Host(), "c")
-	// now try to mark b as success; should fail because already marked
-	respB.Mark(nil)
 	assert.Equal(t, p.Get().Host(), "c") // would be b if it were not dead
 	// now restore a
 	respA = &standardHostPoolResponse{host: "a", pool: p}
