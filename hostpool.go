@@ -23,7 +23,6 @@ func Version() string {
 type HostPoolResponse interface {
 	Host() string
 	Mark(error)
-	hostPool() HostPool
 }
 
 type standardHostPoolResponse struct {

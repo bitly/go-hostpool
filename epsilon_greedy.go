@@ -7,15 +7,18 @@ import (
 )
 
 type epsilonHostPoolResponse struct {
-	standardHostPoolResponse
+	HostPoolResponse
 	started time.Time
 	ended   time.Time
+	pool    *epsilonGreedyHostPool
 }
 
 func (r *epsilonHostPoolResponse) Mark(err error) {
-	r.ended = time.Now()
-	r.standardHostPoolResponse.Mark(err)
-
+	if err == nil {
+		r.ended = time.Now()
+		r.pool.recordTiming(r)
+	}
+	r.HostPoolResponse.Mark(err)
 }
 
 type epsilonGreedyHostPool struct {
@@ -94,8 +97,9 @@ func (p *epsilonGreedyHostPool) Get() HostPoolResponse {
 	host := p.getEpsilonGreedy()
 	started := time.Now()
 	return &epsilonHostPoolResponse{
-		standardHostPoolResponse: standardHostPoolResponse{host: host, pool: p},
-		started:                  started,
+		HostPoolResponse: &standardHostPoolResponse{host: host, pool: p},
+		started:          started,
+		pool:             p,
 	}
 }
 
@@ -158,15 +162,8 @@ func (p *epsilonGreedyHostPool) getEpsilonGreedy() string {
 	return hostToUse.host
 }
 
-func (p *epsilonGreedyHostPool) markSuccess(hostR HostPoolResponse) {
-	// first do the base markSuccess - a little redundant with host lookup but cleaner than repeating logic
-	p.standardHostPool.markSuccess(hostR)
-	eHostR, ok := hostR.(*epsilonHostPoolResponse)
-	if !ok {
-		log.Printf("Incorrect type in eps markSuccess!") // TODO reflection to print out offending type
-		return
-	}
-	host := eHostR.host
+func (p *epsilonGreedyHostPool) recordTiming(eHostR *epsilonHostPoolResponse) {
+	host := eHostR.Host()
 	duration := p.between(eHostR.started, eHostR.ended)
 
 	p.Lock()
