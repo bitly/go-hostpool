@@ -97,7 +97,7 @@ func (p *epsilonGreedyHostPool) Get() HostPoolResponse {
 	host := p.getEpsilonGreedy()
 	started := time.Now()
 	return &epsilonHostPoolResponse{
-		HostPoolResponse: &standardHostPoolResponse{host: host, pool: p},
+		HostPoolResponse: &standardHostPoolResponse{host: host, pool: &p.standardHostPool},
 		started:          started,
 		pool:             p,
 	}

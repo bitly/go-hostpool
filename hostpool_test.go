@@ -17,7 +17,7 @@ func TestHostPool(t *testing.T) {
 
 	dummyErr := errors.New("Dummy Error")
 
-	p := New([]string{"a", "b", "c"})
+	p := New([]string{"a", "b", "c"}).(*standardHostPool)
 	assert.Equal(t, p.Get().Host(), "a")
 	assert.Equal(t, p.Get().Host(), "b")
 	assert.Equal(t, p.Get().Host(), "c")

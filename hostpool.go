@@ -27,7 +27,7 @@ type HostPoolResponse interface {
 
 type standardHostPoolResponse struct {
 	host string
-	pool HostPool
+	pool *standardHostPool
 }
 
 // --- HostPool structs and interfaces ----
@@ -37,9 +37,6 @@ type standardHostPoolResponse struct {
 // get the list of all Hosts, and use ResetAll to reset state.
 type HostPool interface {
 	Get() HostPoolResponse
-	// keep the marks separate so we can override independently
-	markSuccess(HostPoolResponse)
-	markFailed(HostPoolResponse)
 
 	ResetAll()
 	Hosts() []string
@@ -87,15 +84,11 @@ func (r *standardHostPoolResponse) Host() string {
 	return r.host
 }
 
-func (r *standardHostPoolResponse) hostPool() HostPool {
-	return r.pool
-}
-
 func (r *standardHostPoolResponse) Mark(err error) {
 	if err == nil {
-		r.hostPool().markSuccess(r)
+		r.pool.markSuccess(r)
 	} else {
-		r.hostPool().markFailed(r)
+		r.pool.markFailed(r)
 	}
 }
 
@@ -147,7 +140,7 @@ func (p *standardHostPool) doResetAll() {
 	}
 }
 
-func (p *standardHostPool) markSuccess(hostR HostPoolResponse) {
+func (p *standardHostPool) markSuccess(hostR *standardHostPoolResponse) {
 	host := hostR.Host()
 	p.Lock()
 	defer p.Unlock()
@@ -159,7 +152,7 @@ func (p *standardHostPool) markSuccess(hostR HostPoolResponse) {
 	h.dead = false
 }
 
-func (p *standardHostPool) markFailed(hostR HostPoolResponse) {
+func (p *standardHostPool) markFailed(hostR *standardHostPoolResponse) {
 	host := hostR.Host()
 	p.Lock()
 	defer p.Unlock()
