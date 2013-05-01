@@ -100,9 +100,9 @@ func (p *epsilonGreedyHostPool) Get() HostPoolResponse {
 	host, err := p.getEpsilonGreedy()
 	p.Unlock()
 	if err != nil {
-		host = p.HostPool.Get().Host()
+		return p.toEpsilonHostPootResponse(p.HostPool.Get())
 	}
-	return p.responseForHostName(host)
+	return p.selectHost(host)
 }
 
 func (p *epsilonGreedyHostPool) getEpsilonGreedy() (string, error) {
@@ -157,10 +157,6 @@ func (p *epsilonGreedyHostPool) getEpsilonGreedy() (string, error) {
 		}
 		return "", errors.New("No host chosen")
 	}
-
-	if hostToUse.dead {
-		hostToUse.willRetryHost(p.HostPool.(*standardHostPool).maxRetryInterval)
-	}
 	return hostToUse.host, nil
 }
 
@@ -178,10 +174,16 @@ func (p *epsilonGreedyHostPool) recordTiming(eHostR *epsilonHostPoolResponse) {
 	h.epsilonValues[h.epsilonIndex] += int64(duration.Seconds() * 1000)
 }
 
-func (p *epsilonGreedyHostPool) responseForHostName(host string) HostPoolResponse {
+func (p *epsilonGreedyHostPool) selectHost(host string) HostPoolResponse {
+	resp := p.HostPool.selectHost(host)
+	return p.toEpsilonHostPootResponse(resp)
+}
+
+// Convert regular response to one equipped for EG. Doesn't require lock, for now
+func (p *epsilonGreedyHostPool) toEpsilonHostPootResponse(resp HostPoolResponse) *epsilonHostPoolResponse {
 	started := time.Now()
 	return &epsilonHostPoolResponse{
-		HostPoolResponse: p.HostPool.responseForHostName(host),
+		HostPoolResponse: resp,
 		started:          started,
 		pool:             p,
 	}

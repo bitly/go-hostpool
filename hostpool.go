@@ -41,7 +41,7 @@ type HostPool interface {
 	ResetAll()
 	Hosts() []string
 
-	responseForHostName(string) HostPoolResponse
+	selectHost(string) HostPoolResponse
 }
 
 type standardHostPool struct {
@@ -97,9 +97,9 @@ func (r *standardHostPoolResponse) Mark(err error) {
 // return an entry from the HostPool
 func (p *standardHostPool) Get() HostPoolResponse {
 	p.Lock()
-	defer p.Unlock()
 	host := p.getRoundRobin()
-	return &standardHostPoolResponse{host: host, pool: p}
+	p.Unlock()
+	return p.selectHost(host)
 }
 
 func (p *standardHostPool) getRoundRobin() string {
@@ -110,12 +110,7 @@ func (p *standardHostPool) getRoundRobin() string {
 		currentIndex := (i + p.nextHostIndex) % hostCount
 
 		h := p.hostList[currentIndex]
-		if !h.dead {
-			p.nextHostIndex = currentIndex + 1
-			return h.host
-		}
-		if h.nextRetry.Before(now) {
-			h.willRetryHost(p.maxRetryInterval)
+		if h.canTryHost(now) {
 			p.nextHostIndex = currentIndex + 1
 			return h.host
 		}
@@ -178,6 +173,16 @@ func (p *standardHostPool) Hosts() []string {
 	return hosts
 }
 
-func (p *standardHostPool) responseForHostName(host string) HostPoolResponse {
+func (p *standardHostPool) selectHost(host string) HostPoolResponse {
+	p.Lock()
+	defer p.Unlock()
+	h, ok := p.hosts[host]
+	if !ok {
+		log.Fatalf("host %s not in HostPool %v", host, p.Hosts())
+	}
+	now := time.Now()
+	if h.dead && h.nextRetry.Before(now) {
+		h.willRetryHost(p.maxRetryInterval)
+	}
 	return &standardHostPoolResponse{host: host, pool: p}
 }
