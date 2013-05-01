@@ -40,6 +40,8 @@ type HostPool interface {
 
 	ResetAll()
 	Hosts() []string
+
+	responseForHostName(string) HostPoolResponse
 }
 
 type standardHostPool struct {
@@ -174,4 +176,8 @@ func (p *standardHostPool) Hosts() []string {
 		hosts = append(hosts, host)
 	}
 	return hosts
+}
+
+func (p *standardHostPool) responseForHostName(host string) HostPoolResponse {
+	return &standardHostPoolResponse{host: host, pool: p}
 }

@@ -1,8 +1,10 @@
 package hostpool
 
 import (
+	"errors"
 	"log"
 	"math/rand"
+	"sync"
 	"time"
 )
 
@@ -22,7 +24,8 @@ func (r *epsilonHostPoolResponse) Mark(err error) {
 }
 
 type epsilonGreedyHostPool struct {
-	standardHostPool               // TODO - would be nifty if we could embed HostPool and Locker interfaces
+	HostPool
+	sync.Locker
 	epsilon                float32 // this is our exploration factor
 	decayDuration          time.Duration
 	EpsilonValueCalculator // embed the epsilonValueCalculator
@@ -50,7 +53,8 @@ func NewEpsilonGreedy(hosts []string, decayDuration time.Duration, calc EpsilonV
 	}
 	stdHP := New(hosts).(*standardHostPool)
 	p := &epsilonGreedyHostPool{
-		standardHostPool:       *stdHP,
+		HostPool:               stdHP,
+		Locker:                 stdHP,
 		epsilon:                float32(initialEpsilon),
 		decayDuration:          decayDuration,
 		EpsilonValueCalculator: calc,
@@ -58,7 +62,7 @@ func NewEpsilonGreedy(hosts []string, decayDuration time.Duration, calc EpsilonV
 	}
 
 	// allocate structures
-	for _, h := range p.hostList {
+	for _, h := range stdHP.hostList {
 		h.epsilonCounts = make([]int64, epsilonBuckets)
 		h.epsilonValues = make([]int64, epsilonBuckets)
 	}
@@ -82,7 +86,7 @@ func (p *epsilonGreedyHostPool) epsilonGreedyDecay() {
 }
 func (p *epsilonGreedyHostPool) performEpsilonGreedyDecay() {
 	p.Lock()
-	for _, h := range p.hostList {
+	for _, h := range p.HostPool.(*standardHostPool).hostList {
 		h.epsilonIndex += 1
 		h.epsilonIndex = h.epsilonIndex % epsilonBuckets
 		h.epsilonCounts[h.epsilonIndex] = 0
@@ -93,17 +97,15 @@ func (p *epsilonGreedyHostPool) performEpsilonGreedyDecay() {
 
 func (p *epsilonGreedyHostPool) Get() HostPoolResponse {
 	p.Lock()
-	defer p.Unlock()
-	host := p.getEpsilonGreedy()
-	started := time.Now()
-	return &epsilonHostPoolResponse{
-		HostPoolResponse: &standardHostPoolResponse{host: host, pool: &p.standardHostPool},
-		started:          started,
-		pool:             p,
+	host, err := p.getEpsilonGreedy()
+	p.Unlock()
+	if err != nil {
+		host = p.HostPool.Get().Host()
 	}
+	return p.responseForHostName(host)
 }
 
-func (p *epsilonGreedyHostPool) getEpsilonGreedy() string {
+func (p *epsilonGreedyHostPool) getEpsilonGreedy() (string, error) {
 	var hostToUse *hostEntry
 
 	// this is our exploration phase
@@ -112,14 +114,14 @@ func (p *epsilonGreedyHostPool) getEpsilonGreedy() string {
 		if p.epsilon < minEpsilon {
 			p.epsilon = minEpsilon
 		}
-		return p.getRoundRobin()
+		return "", errors.New("Exploration")
 	}
 
 	// calculate values for each host in the 0..1 range (but not ormalized)
 	var possibleHosts []*hostEntry
 	now := time.Now()
 	var sumValues float64
-	for _, h := range p.hostList {
+	for _, h := range p.HostPool.(*standardHostPool).hostList {
 		if h.canTryHost(now) {
 			v := h.getWeightedAverageResponseTime()
 			if v > 0 {
@@ -153,13 +155,13 @@ func (p *epsilonGreedyHostPool) getEpsilonGreedy() string {
 		if len(possibleHosts) != 0 {
 			log.Println("Failed to randomly choose a host, Dan loses")
 		}
-		return p.getRoundRobin()
+		return "", errors.New("No host chosen")
 	}
 
 	if hostToUse.dead {
-		hostToUse.willRetryHost(p.maxRetryInterval)
+		hostToUse.willRetryHost(p.HostPool.(*standardHostPool).maxRetryInterval)
 	}
-	return hostToUse.host
+	return hostToUse.host, nil
 }
 
 func (p *epsilonGreedyHostPool) recordTiming(eHostR *epsilonHostPoolResponse) {
@@ -168,12 +170,21 @@ func (p *epsilonGreedyHostPool) recordTiming(eHostR *epsilonHostPoolResponse) {
 
 	p.Lock()
 	defer p.Unlock()
-	h, ok := p.hosts[host]
+	h, ok := p.HostPool.(*standardHostPool).hosts[host]
 	if !ok {
 		log.Fatalf("host %s not in HostPool %v", host, p.Hosts())
 	}
 	h.epsilonCounts[h.epsilonIndex]++
 	h.epsilonValues[h.epsilonIndex] += int64(duration.Seconds() * 1000)
+}
+
+func (p *epsilonGreedyHostPool) responseForHostName(host string) HostPoolResponse {
+	started := time.Now()
+	return &epsilonHostPoolResponse{
+		HostPoolResponse: p.HostPool.responseForHostName(host),
+		started:          started,
+		pool:             p,
+	}
 }
 
 // --- timer: this just exists for testing
