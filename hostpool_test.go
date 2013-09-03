@@ -18,33 +18,33 @@ func TestHostPool(t *testing.T) {
 	dummyErr := errors.New("Dummy Error")
 
 	p := New([]string{"a", "b", "c"}).(*standardHostPool)
-	assert.Equal(t, p.Get().Host(), "a")
-	assert.Equal(t, p.Get().Host(), "b")
-	assert.Equal(t, p.Get().Host(), "c")
-	respA := p.Get()
+	assert.Equal(t, Get(p).Host(), "a")
+	assert.Equal(t, Get(p).Host(), "b")
+	assert.Equal(t, Get(p).Host(), "c")
+	respA := Get(p)
 	assert.Equal(t, respA.Host(), "a")
 
 	respA.Mark(dummyErr)
-	respB := p.Get()
+	respB := Get(p)
 	respB.Mark(dummyErr)
-	respC := p.Get()
+	respC := Get(p)
 	assert.Equal(t, respC.Host(), "c")
 	respC.Mark(nil)
 	// get again, and verify that it's still c
-	assert.Equal(t, p.Get().Host(), "c")
-	assert.Equal(t, p.Get().Host(), "c") // would be b if it were not dead
+	assert.Equal(t, Get(p).Host(), "c")
+	assert.Equal(t, Get(p).Host(), "c") // would be b if it were not dead
 	// now restore a
 	respA = &standardHostPoolResponse{host: "a", pool: p}
 	respA.Mark(nil)
-	assert.Equal(t, p.Get().Host(), "a")
-	assert.Equal(t, p.Get().Host(), "c")
+	assert.Equal(t, Get(p).Host(), "a")
+	assert.Equal(t, Get(p).Host(), "c")
 
 	// ensure that we get *something* back when all hosts fail
 	for _, host := range []string{"a", "b", "c"} {
 		response := &standardHostPoolResponse{host: host, pool: p}
 		response.Mark(dummyErr)
 	}
-	resp := p.Get()
+	resp := Get(p)
 	assert.NotEqual(t, resp, nil)
 }
 
@@ -79,7 +79,7 @@ func TestEpsilonGreedy(t *testing.T) {
 		if i != 0 && i%100 == 0 {
 			p.performEpsilonGreedyDecay()
 		}
-		hostR := p.Get()
+		hostR := Get(p)
 		host := hostR.Host()
 		hitCounts[host]++
 		timing := timings[host]
@@ -103,7 +103,7 @@ func TestEpsilonGreedy(t *testing.T) {
 		if i != 0 && i%100 == 0 {
 			p.performEpsilonGreedyDecay()
 		}
-		hostR := p.Get()
+		hostR := Get(p)
 		host := hostR.Host()
 		hitCounts[host]++
 		timing := timings[host]
@@ -136,7 +136,7 @@ func BenchmarkEpsilonGreedy(b *testing.B) {
 		if i != 0 && i%100 == 0 {
 			p.performEpsilonGreedyDecay()
 		}
-		hostR := p.Get()
+		hostR := Get(p)
 		p.timer = &mockTimer{t: int(timings[i])}
 		hostR.Mark(nil)
 	}

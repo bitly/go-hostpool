@@ -95,14 +95,14 @@ func (p *epsilonGreedyHostPool) performEpsilonGreedyDecay() {
 	p.Unlock()
 }
 
-func (p *epsilonGreedyHostPool) Get() HostPoolResponse {
+func (p *epsilonGreedyHostPool) ChooseNextHost() string {
 	p.Lock()
 	host, err := p.getEpsilonGreedy()
 	p.Unlock()
 	if err != nil {
-		return p.toEpsilonHostPootResponse(p.HostPool.Get())
+		host = p.HostPool.ChooseNextHost()
 	}
-	return p.selectHost(host)
+	return host
 }
 
 func (p *epsilonGreedyHostPool) getEpsilonGreedy() (string, error) {
@@ -174,8 +174,8 @@ func (p *epsilonGreedyHostPool) recordTiming(eHostR *epsilonHostPoolResponse) {
 	h.epsilonValues[h.epsilonIndex] += int64(duration.Seconds() * 1000)
 }
 
-func (p *epsilonGreedyHostPool) selectHost(host string) HostPoolResponse {
-	resp := p.HostPool.selectHost(host)
+func (p *epsilonGreedyHostPool) DeliverHostResponse(host string) HostPoolResponse {
+	resp := p.HostPool.DeliverHostResponse(host)
 	return p.toEpsilonHostPootResponse(resp)
 }
 

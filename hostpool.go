@@ -36,12 +36,13 @@ type standardHostPoolResponse struct {
 // allow you to Get a HostPoolResponse (which includes a hostname to use),
 // get the list of all Hosts, and use ResetAll to reset state.
 type HostPool interface {
-	Get() HostPoolResponse
+	// Get() HostPoolResponse
 
 	ResetAll()
 	Hosts() []string
 
-	selectHost(string) HostPoolResponse
+	ChooseNextHost() string
+	DeliverHostResponse(string) HostPoolResponse
 }
 
 type standardHostPool struct {
@@ -95,11 +96,16 @@ func (r *standardHostPoolResponse) Mark(err error) {
 }
 
 // return an entry from the HostPool
-func (p *standardHostPool) Get() HostPoolResponse {
+func Get(p HostPool) HostPoolResponse {
+	host := p.ChooseNextHost()
+	return p.DeliverHostResponse(host)
+}
+
+func (p *standardHostPool) ChooseNextHost() string {
 	p.Lock()
 	host := p.getRoundRobin()
 	p.Unlock()
-	return p.selectHost(host)
+	return host
 }
 
 func (p *standardHostPool) getRoundRobin() string {
@@ -173,7 +179,7 @@ func (p *standardHostPool) Hosts() []string {
 	return hosts
 }
 
-func (p *standardHostPool) selectHost(host string) HostPoolResponse {
+func (p *standardHostPool) DeliverHostResponse(host string) HostPoolResponse {
 	p.Lock()
 	defer p.Unlock()
 	h, ok := p.hosts[host]
