@@ -5,8 +5,8 @@ import (
 )
 
 func ExampleNewEpsilonGreedy() {
-	hp := NewEpsilonGreedy([]string{"a", "b"}, 0, &LinearEpsilonValueCalculator{})
-	hostResponse := Get(hp)
+	hp := NewWithSelector([]string{"a", "b"}, NewEpsilonGreedy(0, &LinearEpsilonValueCalculator{}))
+	hostResponse := hp.Get()
 	hostname := hostResponse.Host()
 	err := errors.New("I am your http error from " + hostname) // (make a request with hostname)
 	hostResponse.Mark(err)

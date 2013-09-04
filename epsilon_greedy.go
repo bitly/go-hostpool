@@ -10,21 +10,21 @@ import (
 
 type epsilonHostPoolResponse struct {
 	HostPoolResponse
-	started time.Time
-	ended   time.Time
-	pool    *epsilonGreedyHostPool
+	started  time.Time
+	ended    time.Time
+	selector *epsilonGreedySelector
 }
 
 func (r *epsilonHostPoolResponse) Mark(err error) {
 	if err == nil {
 		r.ended = time.Now()
-		r.pool.recordTiming(r)
+		r.selector.recordTiming(r)
 	}
 	r.HostPoolResponse.Mark(err)
 }
 
-type epsilonGreedyHostPool struct {
-	HostPool
+type epsilonGreedySelector struct {
+	Selector
 	sync.Locker
 	epsilon                float32 // this is our exploration factor
 	decayDuration          time.Duration
@@ -32,7 +32,7 @@ type epsilonGreedyHostPool struct {
 	timer
 }
 
-// Construct an Epsilon Greedy HostPool
+// Construct an Epsilon Greedy Selector
 //
 // Epsilon Greedy is an algorithm that allows HostPool not only to track failure state, 
 // but also to learn about "better" options in terms of speed, and to pick from available hosts
@@ -46,73 +46,71 @@ type epsilonGreedyHostPool struct {
 // To compute the weighting scores, we perform a weighted average of recent response times, over the course of
 // `decayDuration`. decayDuration may be set to 0 to use the default value of 5 minutes
 // We then use the supplied EpsilonValueCalculator to calculate a score from that weighted average response time.
-func NewEpsilonGreedy(hosts []string, decayDuration time.Duration, calc EpsilonValueCalculator) HostPool {
+func NewEpsilonGreedy(decayDuration time.Duration, calc EpsilonValueCalculator) Selector {
 
 	if decayDuration <= 0 {
 		decayDuration = defaultDecayDuration
 	}
-	stdHP := New(hosts).(*standardHostPool)
-	p := &epsilonGreedyHostPool{
-		HostPool:               stdHP,
-		Locker:                 stdHP,
+	ss := &standardSelector{}
+	s := &epsilonGreedySelector{
+		Selector:               ss,
+		Locker:                 ss,
 		epsilon:                float32(initialEpsilon),
 		decayDuration:          decayDuration,
 		EpsilonValueCalculator: calc,
 		timer:                  &realTimer{},
 	}
 
+	return s
+}
+
+func (s *epsilonGreedySelector) Init(hosts []string) {
+	s.Selector.Init(hosts)
 	// allocate structures
-	for _, h := range stdHP.hostList {
+	for _, h := range s.Selector.(*standardSelector).hostList {
 		h.epsilonCounts = make([]int64, epsilonBuckets)
 		h.epsilonValues = make([]int64, epsilonBuckets)
 	}
-	go p.epsilonGreedyDecay()
-	return p
+	go s.epsilonGreedyDecay()
 }
 
-func (p *epsilonGreedyHostPool) SetEpsilon(newEpsilon float32) {
-	p.Lock()
-	defer p.Unlock()
-	p.epsilon = newEpsilon
-}
-
-func (p *epsilonGreedyHostPool) epsilonGreedyDecay() {
-	durationPerBucket := p.decayDuration / epsilonBuckets
+func (s *epsilonGreedySelector) epsilonGreedyDecay() {
+	durationPerBucket := s.decayDuration / epsilonBuckets
 	ticker := time.Tick(durationPerBucket)
 	for {
 		<-ticker
-		p.performEpsilonGreedyDecay()
+		s.performEpsilonGreedyDecay()
 	}
 }
-func (p *epsilonGreedyHostPool) performEpsilonGreedyDecay() {
-	p.Lock()
-	for _, h := range p.HostPool.(*standardHostPool).hostList {
+func (s *epsilonGreedySelector) performEpsilonGreedyDecay() {
+	s.Lock()
+	for _, h := range s.Selector.(*standardSelector).hostList {
 		h.epsilonIndex += 1
 		h.epsilonIndex = h.epsilonIndex % epsilonBuckets
 		h.epsilonCounts[h.epsilonIndex] = 0
 		h.epsilonValues[h.epsilonIndex] = 0
 	}
-	p.Unlock()
+	s.Unlock()
 }
 
-func (p *epsilonGreedyHostPool) ChooseNextHost() string {
-	p.Lock()
-	host, err := p.getEpsilonGreedy()
-	p.Unlock()
+func (s *epsilonGreedySelector) SelectNextHost() string {
+	s.Lock()
+	host, err := s.getEpsilonGreedy()
+	s.Unlock()
 	if err != nil {
-		host = p.HostPool.ChooseNextHost()
+		host = s.Selector.SelectNextHost()
 	}
 	return host
 }
 
-func (p *epsilonGreedyHostPool) getEpsilonGreedy() (string, error) {
+func (s *epsilonGreedySelector) getEpsilonGreedy() (string, error) {
 	var hostToUse *hostEntry
 
 	// this is our exploration phase
-	if rand.Float32() < p.epsilon {
-		p.epsilon = p.epsilon * epsilonDecay
-		if p.epsilon < minEpsilon {
-			p.epsilon = minEpsilon
+	if rand.Float32() < s.epsilon {
+		s.epsilon = s.epsilon * epsilonDecay
+		if s.epsilon < minEpsilon {
+			s.epsilon = minEpsilon
 		}
 		return "", errors.New("Exploration")
 	}
@@ -121,11 +119,11 @@ func (p *epsilonGreedyHostPool) getEpsilonGreedy() (string, error) {
 	var possibleHosts []*hostEntry
 	now := time.Now()
 	var sumValues float64
-	for _, h := range p.HostPool.(*standardHostPool).hostList {
+	for _, h := range s.Selector.(*standardSelector).hostList {
 		if h.canTryHost(now) {
 			v := h.getWeightedAverageResponseTime()
 			if v > 0 {
-				ev := p.CalcValueFromAvgResponseTime(v)
+				ev := s.CalcValueFromAvgResponseTime(v)
 				h.epsilonValue = ev
 				sumValues += ev
 				possibleHosts = append(possibleHosts, h)
@@ -160,32 +158,32 @@ func (p *epsilonGreedyHostPool) getEpsilonGreedy() (string, error) {
 	return hostToUse.host, nil
 }
 
-func (p *epsilonGreedyHostPool) recordTiming(eHostR *epsilonHostPoolResponse) {
+func (s *epsilonGreedySelector) recordTiming(eHostR *epsilonHostPoolResponse) {
 	host := eHostR.Host()
-	duration := p.between(eHostR.started, eHostR.ended)
+	duration := s.between(eHostR.started, eHostR.ended)
 
-	p.Lock()
-	defer p.Unlock()
-	h, ok := p.HostPool.(*standardHostPool).hosts[host]
+	s.Lock()
+	defer s.Unlock()
+	h, ok := s.Selector.(*standardSelector).hosts[host]
 	if !ok {
-		log.Fatalf("host %s not in HostPool %v", host, p.Hosts())
+		log.Fatalf("host %s not in HostPool", host)
 	}
 	h.epsilonCounts[h.epsilonIndex]++
 	h.epsilonValues[h.epsilonIndex] += int64(duration.Seconds() * 1000)
 }
 
-func (p *epsilonGreedyHostPool) DeliverHostResponse(host string) HostPoolResponse {
-	resp := p.HostPool.DeliverHostResponse(host)
-	return p.toEpsilonHostPootResponse(resp)
+func (s *epsilonGreedySelector) MakeHostResponse(host string) HostPoolResponse {
+	resp := s.Selector.MakeHostResponse(host)
+	return s.toEpsilonHostPoolResponse(resp)
 }
 
 // Convert regular response to one equipped for EG. Doesn't require lock, for now
-func (p *epsilonGreedyHostPool) toEpsilonHostPootResponse(resp HostPoolResponse) *epsilonHostPoolResponse {
+func (s *epsilonGreedySelector) toEpsilonHostPoolResponse(resp HostPoolResponse) *epsilonHostPoolResponse {
 	started := time.Now()
 	return &epsilonHostPoolResponse{
 		HostPoolResponse: resp,
 		started:          started,
-		pool:             p,
+		selector:         s,
 	}
 }
 

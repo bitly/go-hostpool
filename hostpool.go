@@ -4,8 +4,6 @@
 package hostpool
 
 import (
-	"log"
-	"sync"
 	"time"
 )
 
@@ -27,7 +25,7 @@ type HostPoolResponse interface {
 
 type standardHostPoolResponse struct {
 	host string
-	pool *standardHostPool
+	ss   *standardSelector
 }
 
 // --- HostPool structs and interfaces ----
@@ -36,22 +34,14 @@ type standardHostPoolResponse struct {
 // allow you to Get a HostPoolResponse (which includes a hostname to use),
 // get the list of all Hosts, and use ResetAll to reset state.
 type HostPool interface {
-	// Get() HostPoolResponse
-
+	Get() HostPoolResponse
 	ResetAll()
 	Hosts() []string
-
-	ChooseNextHost() string
-	DeliverHostResponse(string) HostPoolResponse
 }
 
 type standardHostPool struct {
-	sync.RWMutex
-	hosts             map[string]*hostEntry
-	hostList          []*hostEntry
-	initialRetryDelay time.Duration
-	maxRetryInterval  time.Duration
-	nextHostIndex     int
+	hosts []string
+	Selector
 }
 
 // ------ constants -------------------
@@ -64,23 +54,15 @@ const defaultDecayDuration = time.Duration(5) * time.Minute
 
 // Construct a basic HostPool using the hostnames provided
 func New(hosts []string) HostPool {
-	p := &standardHostPool{
-		hosts:             make(map[string]*hostEntry, len(hosts)),
-		hostList:          make([]*hostEntry, len(hosts)),
-		initialRetryDelay: time.Duration(30) * time.Second,
-		maxRetryInterval:  time.Duration(900) * time.Second,
-	}
+	return NewWithSelector(hosts, &standardSelector{})
+}
 
-	for i, h := range hosts {
-		e := &hostEntry{
-			host:       h,
-			retryDelay: p.initialRetryDelay,
-		}
-		p.hosts[h] = e
-		p.hostList[i] = e
+func NewWithSelector(hosts []string, s Selector) HostPool {
+	s.Init(hosts)
+	return &standardHostPool{
+		hosts,
+		s,
 	}
-
-	return p
 }
 
 func (r *standardHostPoolResponse) Host() string {
@@ -88,107 +70,15 @@ func (r *standardHostPoolResponse) Host() string {
 }
 
 func (r *standardHostPoolResponse) Mark(err error) {
-	if err == nil {
-		r.pool.markSuccess(r)
-	} else {
-		r.pool.markFailed(r)
-	}
+	r.ss.MarkHost(r.host, err)
 }
 
 // return an entry from the HostPool
-func Get(p HostPool) HostPoolResponse {
-	host := p.ChooseNextHost()
-	return p.DeliverHostResponse(host)
+func (p *standardHostPool) Get() HostPoolResponse {
+	host := p.SelectNextHost()
+	return p.MakeHostResponse(host)
 }
 
-func (p *standardHostPool) ChooseNextHost() string {
-	p.Lock()
-	host := p.getRoundRobin()
-	p.Unlock()
-	return host
-}
-
-func (p *standardHostPool) getRoundRobin() string {
-	now := time.Now()
-	hostCount := len(p.hostList)
-	for i := range p.hostList {
-		// iterate via sequenece from where we last iterated
-		currentIndex := (i + p.nextHostIndex) % hostCount
-
-		h := p.hostList[currentIndex]
-		if h.canTryHost(now) {
-			p.nextHostIndex = currentIndex + 1
-			return h.host
-		}
-	}
-
-	// all hosts are down. re-add them
-	p.doResetAll()
-	p.nextHostIndex = 0
-	return p.hostList[0].host
-}
-
-func (p *standardHostPool) ResetAll() {
-	p.Lock()
-	defer p.Unlock()
-	p.doResetAll()
-}
-
-// this actually performs the logic to reset,
-// and should only be called when the lock has
-// already been acquired
-func (p *standardHostPool) doResetAll() {
-	for _, h := range p.hosts {
-		h.dead = false
-	}
-}
-
-func (p *standardHostPool) markSuccess(hostR *standardHostPoolResponse) {
-	host := hostR.Host()
-	p.Lock()
-	defer p.Unlock()
-
-	h, ok := p.hosts[host]
-	if !ok {
-		log.Fatalf("host %s not in HostPool %v", host, p.Hosts())
-	}
-	h.dead = false
-}
-
-func (p *standardHostPool) markFailed(hostR *standardHostPoolResponse) {
-	host := hostR.Host()
-	p.Lock()
-	defer p.Unlock()
-	h, ok := p.hosts[host]
-	if !ok {
-		log.Fatalf("host %s not in HostPool %v", host, p.Hosts())
-	}
-	if !h.dead {
-		h.dead = true
-		h.retryCount = 0
-		h.retryDelay = p.initialRetryDelay
-		h.nextRetry = time.Now().Add(h.retryDelay)
-	}
-
-}
 func (p *standardHostPool) Hosts() []string {
-	hosts := make([]string, len(p.hosts))
-	for host, _ := range p.hosts {
-		hosts = append(hosts, host)
-	}
-	return hosts
-}
-
-func (p *standardHostPool) DeliverHostResponse(host string) HostPoolResponse {
-	p.Lock()
-	defer p.Unlock()
-	h, ok := p.hosts[host]
-	if !ok {
-		log.Fatalf("host %s not in HostPool %v", host, p.Hosts())
-	}
-	now := time.Now()
-	if h.dead && h.nextRetry.Before(now) {
-		h.willRetryHost(p.maxRetryInterval)
-	}
-	return &standardHostPoolResponse{host: host, pool: p}
+	return p.hosts
 }
