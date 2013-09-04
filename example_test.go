@@ -1,13 +1,13 @@
 package hostpool
 
 import (
-	"github.com/bitly/go-hostpool"
+	"errors"
 )
 
 func ExampleNewEpsilonGreedy() {
-	hp := hostpool.NewEpsilonGreedy([]string{"a", "b"}, 0, &hostpool.LinearEpsilonValueCalculator{})
+	hp := NewWithSelector([]string{"a", "b"}, NewEpsilonGreedy(0, &LinearEpsilonValueCalculator{}))
 	hostResponse := hp.Get()
 	hostname := hostResponse.Host()
-	err := nil // (make a request with hostname)
+	err := errors.New("I am your http error from " + hostname) // (make a request with hostname)
 	hostResponse.Mark(err)
 }

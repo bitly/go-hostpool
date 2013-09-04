@@ -4,8 +4,6 @@
 package hostpool
 
 import (
-	"log"
-	"sync"
 	"time"
 )
 
@@ -23,13 +21,11 @@ func Version() string {
 type HostPoolResponse interface {
 	Host() string
 	Mark(error)
-	hostPool() HostPool
 }
 
 type standardHostPoolResponse struct {
 	host string
-	sync.Once
-	pool HostPool
+	ss   *standardSelector
 }
 
 // --- HostPool structs and interfaces ----
@@ -39,21 +35,13 @@ type standardHostPoolResponse struct {
 // get the list of all Hosts, and use ResetAll to reset state.
 type HostPool interface {
 	Get() HostPoolResponse
-	// keep the marks separate so we can override independently
-	markSuccess(HostPoolResponse)
-	markFailed(HostPoolResponse)
-
 	ResetAll()
 	Hosts() []string
 }
 
 type standardHostPool struct {
-	sync.RWMutex
-	hosts             map[string]*hostEntry
-	hostList          []*hostEntry
-	initialRetryDelay time.Duration
-	maxRetryInterval  time.Duration
-	nextHostIndex     int
+	hosts []string
+	Selector
 }
 
 // ------ constants -------------------
@@ -66,127 +54,31 @@ const defaultDecayDuration = time.Duration(5) * time.Minute
 
 // Construct a basic HostPool using the hostnames provided
 func New(hosts []string) HostPool {
-	p := &standardHostPool{
-		hosts:             make(map[string]*hostEntry, len(hosts)),
-		hostList:          make([]*hostEntry, len(hosts)),
-		initialRetryDelay: time.Duration(30) * time.Second,
-		maxRetryInterval:  time.Duration(900) * time.Second,
-	}
+	return NewWithSelector(hosts, &standardSelector{})
+}
 
-	for i, h := range hosts {
-		e := &hostEntry{
-			host:       h,
-			retryDelay: p.initialRetryDelay,
-		}
-		p.hosts[h] = e
-		p.hostList[i] = e
+func NewWithSelector(hosts []string, s Selector) HostPool {
+	s.Init(hosts)
+	return &standardHostPool{
+		hosts,
+		s,
 	}
-
-	return p
 }
 
 func (r *standardHostPoolResponse) Host() string {
 	return r.host
 }
 
-func (r *standardHostPoolResponse) hostPool() HostPool {
-	return r.pool
-}
-
 func (r *standardHostPoolResponse) Mark(err error) {
-	r.Do(func() {
-		doMark(err, r)
-	})
-}
-
-func doMark(err error, r HostPoolResponse) {
-	if err == nil {
-		r.hostPool().markSuccess(r)
-	} else {
-		r.hostPool().markFailed(r)
-	}
+	r.ss.MarkHost(r.host, err)
 }
 
 // return an entry from the HostPool
 func (p *standardHostPool) Get() HostPoolResponse {
-	p.Lock()
-	defer p.Unlock()
-	host := p.getRoundRobin()
-	return &standardHostPoolResponse{host: host, pool: p}
+	host := p.SelectNextHost()
+	return p.MakeHostResponse(host)
 }
 
-func (p *standardHostPool) getRoundRobin() string {
-	now := time.Now()
-	hostCount := len(p.hostList)
-	for i := range p.hostList {
-		// iterate via sequenece from where we last iterated
-		currentIndex := (i + p.nextHostIndex) % hostCount
-
-		h := p.hostList[currentIndex]
-		if !h.dead {
-			p.nextHostIndex = currentIndex + 1
-			return h.host
-		}
-		if h.nextRetry.Before(now) {
-			h.willRetryHost(p.maxRetryInterval)
-			p.nextHostIndex = currentIndex + 1
-			return h.host
-		}
-	}
-
-	// all hosts are down. re-add them
-	p.doResetAll()
-	p.nextHostIndex = 0
-	return p.hostList[0].host
-}
-
-func (p *standardHostPool) ResetAll() {
-	p.Lock()
-	defer p.Unlock()
-	p.doResetAll()
-}
-
-// this actually performs the logic to reset,
-// and should only be called when the lock has
-// already been acquired
-func (p *standardHostPool) doResetAll() {
-	for _, h := range p.hosts {
-		h.dead = false
-	}
-}
-
-func (p *standardHostPool) markSuccess(hostR HostPoolResponse) {
-	host := hostR.Host()
-	p.Lock()
-	defer p.Unlock()
-
-	h, ok := p.hosts[host]
-	if !ok {
-		log.Fatalf("host %s not in HostPool %v", host, p.Hosts())
-	}
-	h.dead = false
-}
-
-func (p *standardHostPool) markFailed(hostR HostPoolResponse) {
-	host := hostR.Host()
-	p.Lock()
-	defer p.Unlock()
-	h, ok := p.hosts[host]
-	if !ok {
-		log.Fatalf("host %s not in HostPool %v", host, p.Hosts())
-	}
-	if !h.dead {
-		h.dead = true
-		h.retryCount = 0
-		h.retryDelay = p.initialRetryDelay
-		h.nextRetry = time.Now().Add(h.retryDelay)
-	}
-
-}
 func (p *standardHostPool) Hosts() []string {
-	hosts := make([]string, len(p.hosts))
-	for host, _ := range p.hosts {
-		hosts = append(hosts, host)
-	}
-	return hosts
+	return p.hosts
 }

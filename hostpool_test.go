@@ -17,7 +17,7 @@ func TestHostPool(t *testing.T) {
 
 	dummyErr := errors.New("Dummy Error")
 
-	p := New([]string{"a", "b", "c"})
+	p := New([]string{"a", "b", "c"}).(*standardHostPool)
 	assert.Equal(t, p.Get().Host(), "a")
 	assert.Equal(t, p.Get().Host(), "b")
 	assert.Equal(t, p.Get().Host(), "c")
@@ -32,18 +32,16 @@ func TestHostPool(t *testing.T) {
 	respC.Mark(nil)
 	// get again, and verify that it's still c
 	assert.Equal(t, p.Get().Host(), "c")
-	// now try to mark b as success; should fail because already marked
-	respB.Mark(nil)
 	assert.Equal(t, p.Get().Host(), "c") // would be b if it were not dead
 	// now restore a
-	respA = &standardHostPoolResponse{host: "a", pool: p}
+	respA = &standardHostPoolResponse{host: "a", ss: p.Selector.(*standardSelector)}
 	respA.Mark(nil)
 	assert.Equal(t, p.Get().Host(), "a")
 	assert.Equal(t, p.Get().Host(), "c")
 
 	// ensure that we get *something* back when all hosts fail
 	for _, host := range []string{"a", "b", "c"} {
-		response := &standardHostPoolResponse{host: host, pool: p}
+		response := &standardHostPoolResponse{host: host, ss: p.Selector.(*standardSelector)}
 		response.Mark(dummyErr)
 	}
 	resp := p.Get()
@@ -59,13 +57,13 @@ func (t *mockTimer) between(start time.Time, end time.Time) time.Duration {
 }
 
 func TestEpsilonGreedy(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	defer log.SetOutput(os.Stdout)
+	// log.SetOutput(ioutil.Discard)
+	// defer log.SetOutput(os.Stdout)
 
 	rand.Seed(10)
 
 	iterations := 12000
-	p := NewEpsilonGreedy([]string{"a", "b"}, 0, &LinearEpsilonValueCalculator{}).(*epsilonGreedyHostPool)
+	p := NewWithSelector([]string{"a", "b"}, NewEpsilonGreedy(0, &LinearEpsilonValueCalculator{})).(*standardHostPool)
 
 	timings := make(map[string]int64)
 	timings["a"] = 200
@@ -79,13 +77,13 @@ func TestEpsilonGreedy(t *testing.T) {
 
 	for i := 0; i < iterations; i += 1 {
 		if i != 0 && i%100 == 0 {
-			p.performEpsilonGreedyDecay()
+			p.Selector.(*epsilonGreedySelector).performEpsilonGreedyDecay()
 		}
 		hostR := p.Get()
 		host := hostR.Host()
 		hitCounts[host]++
 		timing := timings[host]
-		p.timer = &mockTimer{t: int(timing)}
+		p.Selector.(*epsilonGreedySelector).timer = &mockTimer{t: int(timing)}
 		hostR.Mark(nil)
 	}
 
@@ -103,13 +101,13 @@ func TestEpsilonGreedy(t *testing.T) {
 
 	for i := 0; i < iterations; i += 1 {
 		if i != 0 && i%100 == 0 {
-			p.performEpsilonGreedyDecay()
+			p.Selector.(*epsilonGreedySelector).performEpsilonGreedyDecay()
 		}
 		hostR := p.Get()
 		host := hostR.Host()
 		hitCounts[host]++
 		timing := timings[host]
-		p.timer = &mockTimer{t: int(timing)}
+		p.Selector.(*epsilonGreedySelector).timer = &mockTimer{t: int(timing)}
 		hostR.Mark(nil)
 	}
 
@@ -131,15 +129,15 @@ func BenchmarkEpsilonGreedy(b *testing.B) {
 	}
 
 	// Make the hostpool with a few hosts
-	p := NewEpsilonGreedy([]string{"a", "b"}, 0, &LinearEpsilonValueCalculator{}).(*epsilonGreedyHostPool)
+	p := NewWithSelector([]string{"a", "b"}, NewEpsilonGreedy(0, &LinearEpsilonValueCalculator{})).(*standardHostPool)
 
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		if i != 0 && i%100 == 0 {
-			p.performEpsilonGreedyDecay()
+			p.Selector.(*epsilonGreedySelector).performEpsilonGreedyDecay()
 		}
 		hostR := p.Get()
-		p.timer = &mockTimer{t: int(timings[i])}
+		p.Selector.(*epsilonGreedySelector).timer = &mockTimer{t: int(timings[i])}
 		hostR.Mark(nil)
 	}
 }
