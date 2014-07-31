@@ -82,7 +82,7 @@ func (p *epsilonGreedyHostPool) epsilonGreedyDecay() {
 func (p *epsilonGreedyHostPool) performEpsilonGreedyDecay() {
 	p.Lock()
 	for _, h := range p.hostList {
-		h.epsilonIndex += 1
+		h.epsilonIndex++
 		h.epsilonIndex = h.epsilonIndex % epsilonBuckets
 		h.epsilonCounts[h.epsilonIndex] = 0
 		h.epsilonValues[h.epsilonIndex] = 0

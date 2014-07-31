@@ -77,7 +77,7 @@ func TestEpsilonGreedy(t *testing.T) {
 
 	log.Printf("starting first run (a, b)")
 
-	for i := 0; i < iterations; i += 1 {
+	for i := 0; i < iterations; i++ {
 		if i != 0 && i%100 == 0 {
 			p.performEpsilonGreedyDecay()
 		}
@@ -101,7 +101,7 @@ func TestEpsilonGreedy(t *testing.T) {
 	timings["a"] = 500
 	timings["b"] = 100
 
-	for i := 0; i < iterations; i += 1 {
+	for i := 0; i < iterations; i++ {
 		if i != 0 && i%100 == 0 {
 			p.performEpsilonGreedyDecay()
 		}

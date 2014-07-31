@@ -30,7 +30,7 @@ func (h *hostEntry) canTryHost(now time.Time) bool {
 }
 
 func (h *hostEntry) willRetryHost(maxRetryInterval time.Duration) {
-	h.retryCount += 1
+	h.retryCount++
 	newDelay := h.retryDelay * 2
 	if newDelay < maxRetryInterval {
 		h.retryDelay = newDelay
@@ -45,7 +45,7 @@ func (h *hostEntry) getWeightedAverageResponseTime() float64 {
 	var lastValue float64
 
 	// start at 1 so we start with the oldest entry
-	for i := 1; i <= epsilonBuckets; i += 1 {
+	for i := 1; i <= epsilonBuckets; i++ {
 		pos := (h.epsilonIndex + i) % epsilonBuckets
 		bucketCount := h.epsilonCounts[pos]
 		// Changing the line below to what I think it should be to get the weights right
