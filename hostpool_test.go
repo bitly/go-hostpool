@@ -89,7 +89,7 @@ func TestEpsilonGreedy(t *testing.T) {
 		hostR.Mark(nil)
 	}
 
-	for host, _ := range hitCounts {
+	for host := range hitCounts {
 		log.Printf("host %s hit %d times (%0.2f percent)", host, hitCounts[host], (float64(hitCounts[host])/float64(iterations))*100.0)
 	}
 
@@ -113,7 +113,7 @@ func TestEpsilonGreedy(t *testing.T) {
 		hostR.Mark(nil)
 	}
 
-	for host, _ := range hitCounts {
+	for host := range hitCounts {
 		log.Printf("host %s hit %d times (%0.2f percent)", host, hitCounts[host], (float64(hitCounts[host])/float64(iterations))*100.0)
 	}
 

@@ -30,13 +30,13 @@ type epsilonGreedyHostPool struct {
 
 // Construct an Epsilon Greedy HostPool
 //
-// Epsilon Greedy is an algorithm that allows HostPool not only to track failure state, 
+// Epsilon Greedy is an algorithm that allows HostPool not only to track failure state,
 // but also to learn about "better" options in terms of speed, and to pick from available hosts
 // based on how well they perform. This gives a weighted request rate to better
 // performing hosts, while still distributing requests to all hosts (proportionate to their performance).
 // The interface is the same as the standard HostPool, but be sure to mark the HostResponse immediately
 // after executing the request to the host, as that will stop the implicitly running request timer.
-// 
+//
 // A good overview of Epsilon Greedy is here http://stevehanov.ca/blog/index.php?id=132
 //
 // To compute the weighting scores, we perform a weighted average of recent response times, over the course of
@@ -53,7 +53,7 @@ func NewEpsilonGreedy(hosts []string, decayDuration time.Duration, calc EpsilonV
 		epsilon:                float32(initialEpsilon),
 		decayDuration:          decayDuration,
 		EpsilonValueCalculator: calc,
-		timer:                  &realTimer{},
+		timer: &realTimer{},
 	}
 
 	// allocate structures
