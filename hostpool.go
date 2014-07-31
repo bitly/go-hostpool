@@ -185,7 +185,7 @@ func (p *standardHostPool) markFailed(hostR HostPoolResponse) {
 }
 func (p *standardHostPool) Hosts() []string {
 	hosts := make([]string, len(p.hosts))
-	for host, _ := range p.hosts {
+	for host := range p.hosts {
 		hosts = append(hosts, host)
 	}
 	return hosts
