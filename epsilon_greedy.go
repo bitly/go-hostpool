@@ -26,6 +26,7 @@ type epsilonGreedyHostPool struct {
 	decayDuration          time.Duration
 	EpsilonValueCalculator // embed the epsilonValueCalculator
 	timer
+	quit chan bool
 }
 
 // Construct an Epsilon Greedy HostPool
@@ -54,6 +55,7 @@ func NewEpsilonGreedy(hosts []string, decayDuration time.Duration, calc EpsilonV
 		decayDuration:          decayDuration,
 		EpsilonValueCalculator: calc,
 		timer: &realTimer{},
+		quit:  make(chan bool),
 	}
 
 	// allocate structures
@@ -63,6 +65,11 @@ func NewEpsilonGreedy(hosts []string, decayDuration time.Duration, calc EpsilonV
 	}
 	go p.epsilonGreedyDecay()
 	return p
+}
+
+func (p *epsilonGreedyHostPool) Close() {
+	p.quit <- true
+	close(p.quit)
 }
 
 func (p *epsilonGreedyHostPool) SetEpsilon(newEpsilon float32) {
@@ -75,8 +82,14 @@ func (p *epsilonGreedyHostPool) epsilonGreedyDecay() {
 	durationPerBucket := p.decayDuration / epsilonBuckets
 	ticker := time.Tick(durationPerBucket)
 	for {
-		<-ticker
-		p.performEpsilonGreedyDecay()
+		select {
+		case <-p.quit:
+			// Can't close the receive only chan ticker.
+			return
+		default:
+			<-ticker
+			p.performEpsilonGreedyDecay()
+		}
 	}
 }
 func (p *epsilonGreedyHostPool) performEpsilonGreedyDecay() {
