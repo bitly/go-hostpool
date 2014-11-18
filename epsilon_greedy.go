@@ -17,7 +17,6 @@ func (r *epsilonHostPoolResponse) Mark(err error) {
 		r.ended = time.Now()
 		doMark(err, r)
 	})
-
 }
 
 type epsilonGreedyHostPool struct {
@@ -80,14 +79,13 @@ func (p *epsilonGreedyHostPool) SetEpsilon(newEpsilon float32) {
 
 func (p *epsilonGreedyHostPool) epsilonGreedyDecay() {
 	durationPerBucket := p.decayDuration / epsilonBuckets
-	ticker := time.Tick(durationPerBucket)
+	ticker := time.NewTicker(durationPerBucket)
 	for {
 		select {
 		case <-p.quit:
-			// Can't close the receive only chan ticker.
+			ticker.Stop()
 			return
-		default:
-			<-ticker
+		case <-ticker.C:
 			p.performEpsilonGreedyDecay()
 		}
 	}
