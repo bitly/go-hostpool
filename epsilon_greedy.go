@@ -67,7 +67,7 @@ func NewEpsilonGreedy(hosts []string, decayDuration time.Duration, calc EpsilonV
 }
 
 func (p *epsilonGreedyHostPool) Close() {
-	p.quit <- true
+	// No need to do p.quit <- true as close(p.quit) does the trick.
 	close(p.quit)
 }
 
