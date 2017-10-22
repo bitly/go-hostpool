@@ -2,13 +2,14 @@ package hostpool
 
 import (
 	"errors"
-	"github.com/bmizerany/assert"
 	"io/ioutil"
 	"log"
 	"math/rand"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/bmizerany/assert"
 )
 
 func TestHostPool(t *testing.T) {

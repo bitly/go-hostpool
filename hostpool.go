@@ -159,6 +159,8 @@ func (p *standardHostPool) doResetAll() {
 }
 
 func (p *standardHostPool) Close() {
+	p.Lock()
+	defer p.Unlock()
 	for _, h := range p.hosts {
 		h.dead = true
 	}
