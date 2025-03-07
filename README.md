@@ -1,7 +1,9 @@
 go-hostpool
 ===========
 
-[![Build Status](https://secure.travis-ci.org/bitly/go-hostpool.png?branch=master)](http://travis-ci.org/bitly/go-hostpool) [![GoDoc](https://godoc.org/github.com/bitly/go-hostpool?status.svg)](https://godoc.org/github.com/bitly/go-hostpool) [![GitHub release](https://img.shields.io/github/release/bitly/go-hostpool.svg)](https://github.com/bitly/go-hostpool/releases/latest)
+[![Build Status](https://github.com/bitly/go-hostpool/actions/workflows/ci.yaml/badge.svg)](https://github.com/bitly/go-hostpool/actions)
+[![GoDoc](https://pkg.go.dev/badge/github.com/bitly/go-hostpool)](https://pkg.go.dev/github.com/bitly/go-hostpool)
+[![GitHub release](https://img.shields.io/github/release/bitly/go-hostpool.svg)](https://github.com/bitly/go-hostpool/releases/latest)
 
 
 A Go package to intelligently and flexibly pool among multiple hosts from your Go application.
@@ -17,4 +19,4 @@ err := _ // (make a request with hostname)
 hostResponse.Mark(err)
 ```
 
-View more detailed documentation on [godoc.org](http://godoc.org/github.com/bitly/go-hostpool)
+View more detailed documentation on [pkg.go.dev](https://pkg.go.dev/github.com/bitly/go-hostpool)
